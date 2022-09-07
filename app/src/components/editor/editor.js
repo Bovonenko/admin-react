@@ -26,14 +26,26 @@ export default class Editor extends Component {
         axios
             .post('./api/createNewPage.php', {"name": this.state.newPageName})
             .then(this.loadPageList())
-            .catch(() => alert('This file alreardy exists'))
+            .catch(() => alert('This file alreardy exists'));
+    }
+
+    deletePage(page) {
+        axios
+            .post('./api/deletePage.php', {"name": page})
+            .then(this.loadPageList())
+            .catch(() => alert('This file wasn\'t found'));
     }
 
     render() {
         const {pageList} = this.state;
         const pages = pageList.map((page, i) => {
             return (
-                <h1 key={i}>{page}</h1>
+                <h1 key={i}>
+                    {page}
+                    <a 
+                        href="#"
+                        onClick={() => this.deletePage(page)}>(x)</a>
+                </h1>
             )
         });
 
