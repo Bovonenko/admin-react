@@ -1,6 +1,7 @@
 import '../../helpers/iframeLoader.js';
 import React, {Component} from "react";
 import axios from "axios";
+import DOMHelper from '../../helpers/dom-helper.js';
 
 export default class Editor extends Component {
     constructor() {
@@ -24,20 +25,28 @@ export default class Editor extends Component {
     }
 
     open(page) {
-        // this.currentPage = `../${page}?rnd=${Math.random()}`;
+        this.currentPage = page;
 
         axios
-            .get(`../${page}`)   // get html document as a string
-            .then(res => this.parseStrToDOM(res.data))  // convert str to dom structure
-            .then(this.wrapTextNodes)  // find all textNodes on the page and wrap them, returns editable document
+            .get(`../${page}?rnd=${Math.random().toString().substring(2)}`)   // get html document as a string
+            .then(res => DOMHelper.parseStrToDOM(res.data))  // convert str to dom structure
+            .then(DOMHelper.wrapTextNodes)  // find all textNodes on the page and wrap them, returns editable document
             .then(dom => {                 
                 this.virtualDom = dom;      // save clean copy
                 return dom;
             })
-            .then(this.serializeDOMToString)  // converts dom back to string to post it on server
+            .then(DOMHelper.serializeDOMToString)  // converts dom back to string to post it on server
             .then(html => axios.post('./api/saveTempPage.php', {html}))  // creates new page in folder
             .then(() => this.iframe.load('../temp.html'))   // that we can open now in Iframe
             .then(() => this.enableEditing())  // enable editing the page when iframe is ready
+    }
+
+    save() {
+        const newDom = this.virtualDom.cloneNode(this.virtualDom);
+        DOMHelper.unwrapTextNodes(newDom);
+        const html = DOMHelper.serializeDOMToString(newDom);
+        axios
+            .post("./api/savePage.php", {pageName: this.currentPage, html})
     }
 
     enableEditing() {
@@ -51,46 +60,8 @@ export default class Editor extends Component {
 
     onTextEdit(element) {  
         const id = element.getAttribute('nodeid');
-        this.virtualDom.body.querySelector(`[nodeid]="${id}"`).innerHTML = element.innerHTML;
+        this.virtualDom.body.querySelector(`[nodeid="${id}"]`).innerHTML = element.innerHTML;
     }
-
-    serializeDOMToString(dom) {
-        const serializer = new XMLSerializer();  
-        return serializer.serializeToString(dom);
-    }
-
-    parseStrToDOM(str) {
-        const parser = new DOMParser();   // create instance of DomParser
-        return parser.parseFromString(str, 'text/html');   // invoke DomParser method and pass to it 
-    }                                                      // (what we need to parse, format),return html document
-
-    wrapTextNodes(dom) {
-        // console.log(typeof dom.body);   // object
-        const body = dom.body;          // reference on an object
-        let textNodes = [];
-
-        function recursy(element) {  // find all text on the page
-            element.childNodes.forEach(node => {
-                
-                if(node.nodeName === '#text' && node.nodeValue.replace(/\s+/g, '').length > 0) {
-                    textNodes.push(node);
-                } else {
-                    recursy(node);
-                }
-            })
-        };
-
-        recursy(body);
-        
-        textNodes.forEach((node, i) => {  // wrapp all textNodes to make them editable then
-            const wrapper = dom.createElement('text-editor');
-            node.parentNode.replaceChild(wrapper, node);
-            wrapper.appendChild(node);
-            wrapper.setAttribute('nodeid', i);  // give every node its own Id
-        });
-
-        return dom;
-    } 
 
     loadPageList() {
         axios
@@ -126,7 +97,11 @@ export default class Editor extends Component {
         // });
 
         return(
-            <iframe src={this.currentPage} frameBorder="0"></iframe>
+            <>
+                <button onClick={() => this.save()}>Click</button>
+                <iframe src={this.currentPage} frameBorder="0"></iframe>
+            </>
+
             // <>
             //     <input 
             //         onChange={(e) => {this.setState({newPageName: e.target.value})}} 
