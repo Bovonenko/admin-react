@@ -24,32 +24,73 @@ export default class Editor extends Component {
     }
 
     open(page) {
-        this.currentPage = `../${page}`;
-        this.iframe.load(this.currentPage, () => {
-            const body = this.iframe.contentDocument.body;
-            let textNodes = [];
+        // this.currentPage = `../${page}?rnd=${Math.random()}`;
 
-            function recursy(element) {
-                element.childNodes.forEach(node => {
-                    
-                    if(node.nodeName === '#text' && node.nodeValue.replace(/\s+/g, '').length > 0) {
-                        textNodes.push(node);
-                    } else {
-                        recursy(node);
-                    }
-                })
-            };
-
-            recursy(body);
-            
-            textNodes.forEach(node => {
-                const wrapper = this.iframe.contentDocument.createElement('text-editor');
-                node.parentNode.replaceChild(wrapper, node);
-                wrapper.appendChild(node);
-                wrapper.contentEditable = 'true';
-            });
-        })
+        axios
+            .get(`../${page}`)   // get html document as a string
+            .then(res => this.parseStrToDOM(res.data))  // convert str to dom structure
+            .then(this.wrapTextNodes)  // find all textNodes on the page and wrap them, returns editable document
+            .then(dom => {                 
+                this.virtualDom = dom;      // save clean copy
+                return dom;
+            })
+            .then(this.serializeDOMToString)  // converts dom back to string to post it on server
+            .then(html => axios.post('./api/saveTempPage.php', {html}))  // creates new page in folder
+            .then(() => this.iframe.load('../temp.html'))   // that we can open now in Iframe
+            .then(() => this.enableEditing())  // enable editing the page when iframe is ready
     }
+
+    enableEditing() {
+        this.iframe.contentDocument.body.querySelectorAll('text-editor').forEach(element => {
+            element.contentEditable = 'true';     // makes text editable
+            element.addEventListener('input', () => {
+                this.onTextEdit(element);    // synchronize our copies when text is editing
+            })
+        });
+    }
+
+    onTextEdit(element) {  
+        const id = element.getAttribute('nodeid');
+        this.virtualDom.body.querySelector(`[nodeid]="${id}"`).innerHTML = element.innerHTML;
+    }
+
+    serializeDOMToString(dom) {
+        const serializer = new XMLSerializer();  
+        return serializer.serializeToString(dom);
+    }
+
+    parseStrToDOM(str) {
+        const parser = new DOMParser();   // create instance of DomParser
+        return parser.parseFromString(str, 'text/html');   // invoke DomParser method and pass to it 
+    }                                                      // (what we need to parse, format),return html document
+
+    wrapTextNodes(dom) {
+        // console.log(typeof dom.body);   // object
+        const body = dom.body;          // reference on an object
+        let textNodes = [];
+
+        function recursy(element) {  // find all text on the page
+            element.childNodes.forEach(node => {
+                
+                if(node.nodeName === '#text' && node.nodeValue.replace(/\s+/g, '').length > 0) {
+                    textNodes.push(node);
+                } else {
+                    recursy(node);
+                }
+            })
+        };
+
+        recursy(body);
+        
+        textNodes.forEach((node, i) => {  // wrapp all textNodes to make them editable then
+            const wrapper = dom.createElement('text-editor');
+            node.parentNode.replaceChild(wrapper, node);
+            wrapper.appendChild(node);
+            wrapper.setAttribute('nodeid', i);  // give every node its own Id
+        });
+
+        return dom;
+    } 
 
     loadPageList() {
         axios
