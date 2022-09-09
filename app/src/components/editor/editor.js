@@ -3,6 +3,9 @@ import React, {Component} from "react";
 import axios from "axios";
 import DOMHelper from '../../helpers/dom-helper.js';
 import EditorText from '../editor-text';
+import bootstrap from 'bootstrap';
+import { Toast, ToastContainer, Modal, Button } from 'react-bootstrap';
+import Spinner from '../spinner';
 
 export default class Editor extends Component {
     constructor() {
@@ -10,22 +13,25 @@ export default class Editor extends Component {
         this.currentPage = "index.html";
         this.state = {
             pageList: [],
-            newPageName: ''
-        }
-        this.createNewPage = this.createNewPage.bind(this);
+            newPageName: '',
+            showToast: false,
+            showModal: false,
+            error: false,
+            loading: true
+        };
     }
 
-    componentDidMount() {
+    componentDidMount = () => {
         this.init(this.currentPage);
     }
 
-    init(page) {
+    init = (page) => {
         this.iframe = document.querySelector('iframe');
-        this.open(page);
+        this.open(page, this.isLoaded);
         this.loadPageList();
     }
 
-    open(page) {
+    open = (page, cb) => {
         this.currentPage = page;
 
         axios
@@ -41,18 +47,23 @@ export default class Editor extends Component {
             .then(() => this.iframe.load('../temp.html'))   // that we can open now in Iframe
             .then(() => this.enableEditing())  // enable editing the page when iframe is ready
             .then(() => this.injectStyles())
+            .then(cb)
     }
 
-    save() {
+    save = (onSuccess, onError) => {
+        this.isLoading();
         const newDom = this.virtualDom.cloneNode(this.virtualDom);
         DOMHelper.unwrapTextNodes(newDom);
         const html = DOMHelper.serializeDOMToString(newDom);
         console.log('saved')
         axios
             .post("./api/savePage.php", {pageName: this.currentPage, html})
+            .then(onSuccess)
+            .catch(onError)
+            .finally(this.isLoaded);
     }
 
-    enableEditing() {
+    enableEditing = () => {
         this.iframe.contentDocument.body.querySelectorAll('text-editor').forEach(element => {
             const id = element.getAttribute('nodeid');
             const virtualElement = this.virtualDom.body.querySelector(`[nodeid="${id}"]`)
@@ -61,7 +72,7 @@ export default class Editor extends Component {
         });
     }
 
-    injectStyles() {
+    injectStyles = () => {
         const style = this.iframe.contentDocument.createElement('style');
         style.innerHTML = `
             text-editor:hover {
@@ -76,52 +87,105 @@ export default class Editor extends Component {
         this.iframe.contentDocument.head.appendChild(style);
     }
 
-    loadPageList() {
+    loadPageList = () => {
         axios
             .get('./api')
             .then(res => this.setState({pageList: res.data}))
     }
 
-    createNewPage() {
+    createNewPage = () => {
         axios
             .post('./api/createNewPage.php', {"name": this.state.newPageName})
             .then(this.loadPageList())
             .catch(() => alert('This file alreardy exists'));
     }
 
-    deletePage(page) {
+    deletePage = (page) => {
         axios
             .post('./api/deletePage.php', {"name": page})
             .then(this.loadPageList())
             .catch(() => alert('This file wasn\'t found'));
     }
 
+    toggleModal = () => {
+        this.setState((state) => ({
+            showModal: !state.showModal
+        }))
+    }
+    closeToast = () => {
+        this.setState({
+            showToast: false,
+            error: false
+        })
+    }
+    openToast = () => {
+        this.setState({
+            showToast: true
+        })
+    }
+    
+    isLoading = () => {
+        this.setState({
+            loading: true
+        })
+    }
+    
+    isLoaded = () => {
+        this.setState({
+            loading: false
+        })
+    }
+
     render() {
-        // const {pageList} = this.state;
-        // const pages = pageList.map((page, i) => {
-        //     return (
-        //         <h1 key={i}>
-        //             {page}
-        //             <a 
-        //                 href="#"
-        //                 onClick={() => this.deletePage(page)}>(x)</a>
-        //         </h1>
-        //     )
-        // });
+        const {showModal, showToast, error, loading} = this.state;
+        const spinner = loading ? <Spinner active/> : null;
 
         return(
             <>
-                <button onClick={() => this.save()}>Click</button>
                 <iframe src={this.currentPage} frameBorder="0"></iframe>
-            </>
 
-            // <>
-            //     <input 
-            //         onChange={(e) => {this.setState({newPageName: e.target.value})}} 
-            //         type="text" />
-            //     <button onClick={this.createNewPage}>Create new page</button>
-            //     {pages}
-            // </>
+                {spinner}
+
+                <div className='panel'>
+                    <Button variant="primary" onClick={this.toggleModal}>
+                        Save changes
+                    </Button>
+                </div>
+
+                <Modal show={showModal} onHide={this.toggleModal}>
+                    <Modal.Header closeButton>
+                        <Modal.Title>Saving</Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>Are you sure you want to save changes?</Modal.Body>
+                    <Modal.Footer>
+                        <Button variant="secondary" onClick={() => {
+                            this.toggleModal();
+
+                            }}>
+                            Close
+                        </Button>
+                        <Button variant="primary" onClick={() => {
+                            this.save(() => {
+                                this.openToast();
+                            }, () => this.setState({error: true}))
+                            this.toggleModal();
+                            }}>
+                            Save Changes
+                        </Button>
+                    </Modal.Footer>
+                </Modal>
+                
+                <ToastContainer position='top-center'>
+                    <Toast bg={error ? 'danger' : 'success'} delay={3000} autohide show={showToast || error} onClose={this.closeToast}>
+                        <Toast.Header>
+                            <strong className="me-auto" >
+                                {error ? 'Something went wrong' : 'Changes have been saved successfuly.'}
+                            </strong>
+                            <small></small>
+                        </Toast.Header>
+                    </Toast>
+                </ToastContainer>
+            </>
         )
     }
 }
