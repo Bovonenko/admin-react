@@ -3,6 +3,8 @@ import React, {Component} from "react";
 import axios from "axios";
 import DOMHelper from '../../helpers/dom-helper.js';
 import EditorText from '../editor-text';
+import UIkit from 'uikit';
+import Spinner from '../spinner';
 
 export default class Editor extends Component {
     constructor() {
@@ -10,9 +12,13 @@ export default class Editor extends Component {
         this.currentPage = "index.html";
         this.state = {
             pageList: [],
-            newPageName: ''
+            newPageName: '',
+            loading: true
         }
         this.createNewPage = this.createNewPage.bind(this);
+        this.save = this.save.bind(this);
+        this.isLoaded = this.isLoaded.bind(this);
+        this.isLoading = this.isLoading.bind(this);
     }
 
     componentDidMount() {
@@ -21,11 +27,11 @@ export default class Editor extends Component {
 
     init(page) {
         this.iframe = document.querySelector('iframe');
-        this.open(page);
+        this.open(page, this.isLoaded);
         this.loadPageList();
     }
 
-    open(page) {
+    open(page, cb) {
         this.currentPage = page;
 
         axios
@@ -41,15 +47,20 @@ export default class Editor extends Component {
             .then(() => this.iframe.load('../temp.html'))   // that we can open now in Iframe
             .then(() => this.enableEditing())  // enable editing the page when iframe is ready
             .then(() => this.injectStyles())
+            .then(cb)
     }
 
-    save() {
+    save(onSuccess, onError) {
+        this.isLoading();
         const newDom = this.virtualDom.cloneNode(this.virtualDom);
         DOMHelper.unwrapTextNodes(newDom);
         const html = DOMHelper.serializeDOMToString(newDom);
         console.log('saved')
         axios
             .post("./api/savePage.php", {pageName: this.currentPage, html})
+            .then(onSuccess)
+            .catch(onError)
+            .finally(this.isLoaded)
     }
 
     enableEditing() {
@@ -96,32 +107,55 @@ export default class Editor extends Component {
             .catch(() => alert('This file wasn\'t found'));
     }
 
-    render() {
-        // const {pageList} = this.state;
-        // const pages = pageList.map((page, i) => {
-        //     return (
-        //         <h1 key={i}>
-        //             {page}
-        //             <a 
-        //                 href="#"
-        //                 onClick={() => this.deletePage(page)}>(x)</a>
-        //         </h1>
-        //     )
-        // });
+    isLoading() {
+        this.setState({
+            loading: true
+        })
+    }
 
+    isLoaded() {
+        this.setState({
+            loading: false
+        })
+    }
+
+    render() {
+        const {loading} = this.state;
+        const modal = true;
+        let spinner;
+
+        spinner = loading ? <Spinner active/> : null;
+        
         return(
             <>
-                <button onClick={() => this.save()}>Click</button>
                 <iframe src={this.currentPage} frameBorder="0"></iframe>
-            </>
 
-            // <>
-            //     <input 
-            //         onChange={(e) => {this.setState({newPageName: e.target.value})}} 
-            //         type="text" />
-            //     <button onClick={this.createNewPage}>Create new page</button>
-            //     {pages}
-            // </>
+                {spinner}
+
+                <div className="panel">
+                    <button className="uk-button uk-button-primary" uk-toggle="target: #modal-save">Save</button>
+                </div>
+
+                <div id="modal-save" uk-modal={modal.toString()} container='false'>
+                    <div className="uk-modal-dialog uk-modal-body">
+                        <h2 className="uk-modal-title">Saving</h2>
+                        <p>Are you sure you want to save changings?</p>
+                        <p className="uk-text-right">
+                            <button className="uk-button uk-button-default uk-modal-close" type="button">Cancel</button>
+                            <button 
+                                className="uk-button uk-button-primary uk-modal-close" 
+                                type="button"
+                                onClick={() => this.save(() => {
+                                    UIkit.notification({message: 'Saved successful', status: 'success'});
+                                },
+                                () => {
+                                    UIkit.notification({message: 'Save Error', status: 'danger'});
+                                })
+                                }>Save</button>
+                        </p>
+                    </div>
+                </div>
+            </>
         )
     }
 }
