@@ -5,6 +5,8 @@ import DOMHelper from '../../helpers/dom-helper.js';
 import EditorText from '../editor-text';
 import UIkit from 'uikit';
 import Spinner from '../spinner';
+import ConfirmModal from '../confirm-modal';
+import ChooseModal from '../choose-modal';
 
 export default class Editor extends Component {
     constructor() {
@@ -19,13 +21,19 @@ export default class Editor extends Component {
         this.save = this.save.bind(this);
         this.isLoaded = this.isLoaded.bind(this);
         this.isLoading = this.isLoading.bind(this);
+        this.init = this.init.bind(this);
+        
     }
 
     componentDidMount() {
-        this.init(this.currentPage);
+        this.init(null, this.currentPage);
     }
 
-    init(page) {
+    init(e, page) {
+        if (e) {
+            e.preventDefault();
+        }
+        this.isLoading();
         this.iframe = document.querySelector('iframe');
         this.open(page, this.isLoaded);
         this.loadPageList();
@@ -44,7 +52,8 @@ export default class Editor extends Component {
             })
             .then(DOMHelper.serializeDOMToString)  // converts dom back to string to post it on server
             .then(html => axios.post('./api/saveTempPage.php', {html}))  // creates new page in folder
-            .then(() => this.iframe.load('../temp.html'))   // that we can open now in Iframe
+            .then(() => this.iframe.load('../asdfhiuyhxcv12432_asdf.html'))   // that we can open now in Iframe
+            .then(() => axios.post('./api/deleteTempPage.php'))
             .then(() => this.enableEditing())  // enable editing the page when iframe is ready
             .then(() => this.injectStyles())
             .then(cb)
@@ -89,7 +98,7 @@ export default class Editor extends Component {
 
     loadPageList() {
         axios
-            .get('./api')
+            .get('./api/pageList.php')
             .then(res => this.setState({pageList: res.data}))
     }
 
@@ -120,7 +129,7 @@ export default class Editor extends Component {
     }
 
     render() {
-        const {loading} = this.state;
+        const {loading, pageList} = this.state;
         const modal = true;
         let spinner;
 
@@ -133,28 +142,12 @@ export default class Editor extends Component {
                 {spinner}
 
                 <div className="panel">
+                    <button className="uk-button uk-button-primary uk-margin-small-right" uk-toggle="target: #modal-open">Open</button>
                     <button className="uk-button uk-button-primary" uk-toggle="target: #modal-save">Save</button>
                 </div>
 
-                <div id="modal-save" uk-modal={modal.toString()} container='false'>
-                    <div className="uk-modal-dialog uk-modal-body">
-                        <h2 className="uk-modal-title">Saving</h2>
-                        <p>Are you sure you want to save changings?</p>
-                        <p className="uk-text-right">
-                            <button className="uk-button uk-button-default uk-modal-close" type="button">Cancel</button>
-                            <button 
-                                className="uk-button uk-button-primary uk-modal-close" 
-                                type="button"
-                                onClick={() => this.save(() => {
-                                    UIkit.notification({message: 'Saved successful', status: 'success'});
-                                },
-                                () => {
-                                    UIkit.notification({message: 'Save Error', status: 'danger'});
-                                })
-                                }>Save</button>
-                        </p>
-                    </div>
-                </div>
+                <ConfirmModal modal={modal} target={'modal-save'} method={this.save} />
+                <ChooseModal data={pageList} modal={modal} target={'modal-open'} redirect={this.init} />
             </>
         )
     }
