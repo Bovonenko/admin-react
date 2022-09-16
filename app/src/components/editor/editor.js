@@ -21,7 +21,9 @@ export default class Editor extends Component {
             backupsList: [],
             newPageName: '',
             loading: true,
-            auth: false
+            auth: false,
+            loginError: false,
+            loginLengthError: false
         };
 
         this.save = this.save.bind(this);
@@ -29,6 +31,7 @@ export default class Editor extends Component {
         this.isLoading = this.isLoading.bind(this);
         this.init = this.init.bind(this);
         this.login = this.login.bind(this);
+        this.logout = this.logout.bind(this);
         this.restoreBackup = this.restoreBackup.bind(this);
     }
 
@@ -46,7 +49,6 @@ export default class Editor extends Component {
         axios
             .get('./api/checkAuth.php')
             .then(res => {
-                console.log(res.data)
                 this.setState({
                     auth: res.data.auth
                 })
@@ -59,10 +61,25 @@ export default class Editor extends Component {
                 .post('./api/login.php', {'password': pass})
                 .then(res => {
                     this.setState({
-                        auth: res.data.auth
+                        auth: res.data.auth,
+                        loginError: !res.data.auth,
+                        loginLengthError: false
                     })
                 })
+        } else {
+            this.setState({
+                loginError: false,
+                loginLengthError: true
+            })
         }
+    }
+
+    logout() {
+        axios
+            .get("./api/logout.php")
+            .then(() => {
+                window.location.replace('/');
+            })
     }
     
     init(e, page) {
@@ -108,7 +125,6 @@ export default class Editor extends Component {
         DOMHelper.unwrapTextNodes(newDom);
         DOMHelper.unwrapImages(newDom);
         const html = DOMHelper.serializeDOMToString(newDom);
-        console.log('saved')
         await axios
             .post("./api/savePage.php", {pageName: this.currentPage, html})
             .then(() => this.showNotifications('Saved successfully', 'success'))
@@ -200,14 +216,14 @@ export default class Editor extends Component {
     }
 
     render() {
-        const {loading, pageList, backupsList, auth} = this.state;
+        const {loading, pageList, backupsList, auth, loginError, loginLengthError} = this.state;
         const modal = true;
         let spinner;
 
         spinner = loading ? <Spinner active/> : null;
         
         if (!auth) {
-            return <Login login={this.login}/>
+            return <Login login={this.login} lengthErr={loginLengthError} logErr={loginError}/>
         }
         
         return(
@@ -219,7 +235,26 @@ export default class Editor extends Component {
 
                 <Panel />
 
-                <ConfirmModal modal={modal} target={'modal-save'} method={this.save} />
+                <ConfirmModal 
+                    modal={modal} 
+                    target={'modal-save'} 
+                    method={this.save} 
+                    text={{
+                        title: 'Saving',
+                        descr: 'Are you sure you want to save changings?',
+                        btn: 'Save'
+                    }}/>
+
+                <ConfirmModal 
+                    modal={modal} 
+                    target={'modal-logout'} 
+                    method={this.logout} 
+                    text={{
+                        title: 'Exit',
+                        descr: 'Are you sure you want to exit?',
+                        btn: 'Exit'
+                    }}/>    
+                    
                 <ChooseModal data={pageList} modal={modal} target={'modal-open'} redirect={this.init} />
                 <ChooseModal data={backupsList} modal={modal} target={'modal-backup'} redirect={this.restoreBackup} />
                 {this.virtualDom ? <EditorMeta modal={modal} target={'modal-meta'} virtualDom={this.virtualDom} /> : false}
